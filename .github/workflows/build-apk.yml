@@ -28,10 +28,8 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -52,15 +50,13 @@ jobs:
           java-version: '17'
       - name: Decode signing keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
-      - name: Make gradlew executable
-        run: chmod +x gradlew
       - name: Build Release APK
         env:
           KEYSTORE_PATH: ../keystore.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: gradle assembleRelease
       - name: Rename APK
         run: mv app/build/outputs/apk/release/app-release.apk OpenChat-${{ github.ref_name }}.apk
       - name: Create GitHub Release

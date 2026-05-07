@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "OpenChat",
+  "description": "Modern modular Android application powered by AI with multi-provider LLM support, memory, and smooth UI.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

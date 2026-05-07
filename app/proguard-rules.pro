@@ -1,0 +1,4 @@
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+-keep class * extends retrofit2.Converter$Factory
+-keep class * extends retrofit2.CallAdapter$Factory

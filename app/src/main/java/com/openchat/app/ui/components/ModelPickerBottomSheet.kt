@@ -62,46 +62,98 @@ fun ModelPickerBottomSheet(
 
             val groupedModels = availableModels
                 .filter { it.displayName.contains(searchQuery, ignoreCase = true) || it.modelId.contains(searchQuery, ignoreCase = true) }
-                .groupBy { model ->
-                    val providerInfo = activeProviders.find { it.id == model.providerId }?.name ?: "Unknown Provider"
-                    if (model.isBuiltIn) providerInfo else "CUSTOM MODELS"
+                .let { filtered ->
+                    val builtIns = filtered.filter { it.isBuiltIn }.groupBy { model ->
+                        activeProviders.find { it.id == model.providerId }?.name ?: "Unknown Provider"
+                    }
+                    val customs = filtered.filter { !it.isBuiltIn }
+                    
+                    if (customs.isNotEmpty()) {
+                        builtIns + ("CUSTOM MODELS" to customs)
+                    } else {
+                        builtIns
+                    }
                 }
 
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                groupedModels.forEach { (providerName, models) ->
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                groupedModels.forEach { (groupName, models) ->
                     item {
                         Text(
-                            text = providerName,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = groupName.uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             color = Teal500,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp)
                         )
                     }
                     items(models) { model ->
-                        Row(
+                        val provider = activeProviders.find { it.id == model.providerId }
+                        val isSelected = selectedModel?.id == model.id
+
+                        Surface(
+                            onClick = {
+                                viewModel.selectModel(model)
+                                onDismiss()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .background(
-                                    if (selectedModel?.id == model.id) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 2.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(model.displayName, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                                Text("${activeProviders.find { it.id == model.providerId }?.name ?: "Unknown"} • ${model.modelId}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Simple logo representation
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(
+                                            if (isSelected) Teal500 else MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(8.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = (provider?.name ?: "?").take(1),
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.width(12.dp))
+                                
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = model.displayName,
+                                        fontSize = 15.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Teal500 else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "${provider?.name ?: "Unknown"} • ${model.modelId}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        viewModel.selectModel(model)
+                                        onDismiss()
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = Teal500)
+                                )
                             }
-                            RadioButton(
-                                selected = selectedModel?.id == model.id,
-                                onClick = {
-                                    viewModel.selectModel(model)
-                                    onDismiss()
-                                },
-                                colors = RadioButtonDefaults.colors(selectedColor = Teal500)
-                            )
                         }
                     }
                 }

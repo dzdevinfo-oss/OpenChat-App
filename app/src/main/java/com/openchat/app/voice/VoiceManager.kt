@@ -14,6 +14,7 @@ class VoiceManager @Inject constructor(
 
     private var tts: TextToSpeech? = null
     private var isInitialized = false
+    private var pendingText: String? = null
 
     init {
         tts = TextToSpeech(context, this)
@@ -23,11 +24,22 @@ class VoiceManager @Inject constructor(
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale.getDefault()
             isInitialized = true
+            pendingText?.let { 
+                speak(it)
+                pendingText = null
+            }
         }
     }
 
-    fun speak(text: String) {
-        if (isInitialized && text.isNotBlank()) {
+    fun speak(text: String, speed: Float = 1.0f, pitch: Float = 1.0f) {
+        if (!isInitialized) {
+            pendingText = text
+            return
+        }
+        
+        if (text.isNotBlank()) {
+            tts?.setSpeechRate(speed)
+            tts?.setPitch(pitch)
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "TTS_ID")
         }
     }

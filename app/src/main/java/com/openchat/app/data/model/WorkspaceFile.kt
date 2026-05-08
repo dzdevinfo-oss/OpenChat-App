@@ -28,5 +28,7 @@ data class WorkspaceFile(
     val createdAt: Long,
     val updatedAt: Long,
     val isDeleted: Boolean,
-    val previousContent: String?
+    val previousContent: String?,
+    val isFolder: Boolean = false,
+    val parentId: String? = null
 )

@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.SmartToy
 import com.openchat.app.ui.theme.Teal500
 import com.openchat.app.ui.viewmodels.ChatViewModel
 import java.text.SimpleDateFormat
@@ -36,9 +37,24 @@ fun SidebarDrawer(
 ) {
     val allSessions by viewModel.allSessions.collectAsState()
     val currentSession by viewModel.currentSession.collectAsState()
+    val agentStatuses by viewModel.agentStatuses.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    var showAboutDialog by remember { mutableStateOf(false) }
     
     val dateFormatter = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("About OpenChat") },
+            text = { Text("OpenChat is a production-grade AI IDE for mobile. Built with Kotlin and Jetpack Compose.\n\nVersion 1.0.0") },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 
     ModalDrawerSheet(
         modifier = Modifier.width(320.dp),
@@ -89,7 +105,7 @@ fun SidebarDrawer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("RECENT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = { /* TODO Clear All */ }, contentPadding = PaddingValues(0.dp)) {
+                TextButton(onClick = { viewModel.clearAllSessions() }, contentPadding = PaddingValues(0.dp)) {
                     Text("Clear All", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             }
@@ -119,7 +135,7 @@ fun SidebarDrawer(
                             tint = if (isSelected) Teal500 else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = session.title.ifEmpty { "New Chat" },
                                 maxLines = 1,
@@ -132,6 +148,17 @@ fun SidebarDrawer(
                                 text = dateFormatter.format(Date(session.updatedAt)),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        
+                        // Agent status indicator
+                        val agentStatus = agentStatuses[session.id]
+                        if (agentStatus != null) {
+                            Icon(
+                                imageVector = Icons.Default.SmartToy,
+                                contentDescription = "Agent Active",
+                                modifier = Modifier.size(16.dp),
+                                tint = if (agentStatus.isPaused) Color.Gray else Teal500
                             )
                         }
                     }
@@ -164,7 +191,7 @@ fun SidebarDrawer(
                 DrawerItem(icon = Icons.Default.Api, label = "API Config", onClick = onNavigateToApiConfig)
                 DrawerItem(icon = Icons.Default.ModelTraining, label = "Custom Models", onClick = onNavigateToCustomModels)
                 DrawerItem(icon = Icons.Default.Memory, label = "AI Memories", onClick = onNavigateToMemories)
-                DrawerItem(icon = Icons.Default.Info, label = "About", onClick = { /* TODO */ })
+                DrawerItem(icon = Icons.Default.Info, label = "About", onClick = { showAboutDialog = true })
             }
         }
     }

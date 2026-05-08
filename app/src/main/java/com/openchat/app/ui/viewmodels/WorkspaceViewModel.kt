@@ -42,6 +42,25 @@ class WorkspaceViewModel @Inject constructor(
         _sessionId.value = sessionId
     }
 
+    private val _terminalHistory = MutableStateFlow<String>("")
+    val terminalHistory = _terminalHistory.asStateFlow()
+    
+    private val terminalExecutor = TerminalExecutor(context)
+
+    fun executeCommand(command: String) {
+        val sid = _sessionId.value ?: return
+        _terminalHistory.value += "\n$ $command"
+        viewModelScope.launch {
+            val workingDir = File(context.filesDir, "workspaces/$sid")
+            val result = terminalExecutor.execute(command, workingDir)
+            _terminalHistory.value += "\n$result"
+        }
+    }
+
+    fun clearTerminal() {
+        _terminalHistory.value = ""
+    }
+
     fun openFile(file: WorkspaceFile) {
         _currentlyOpenFile.value = file
     }
@@ -50,14 +69,14 @@ class WorkspaceViewModel @Inject constructor(
         _currentlyOpenFile.value = null
     }
 
-    fun createFile(name: String, content: String, type: String) {
+    fun createFile(name: String, content: String, type: String, parentId: String? = null) {
         val sid = _sessionId.value ?: return
         viewModelScope.launch {
-            val workspaceDir = File(context.filesDir, "workspace/\$sid")
+            val workspaceDir = File(context.filesDir, "workspace/$sid")
             val filePath = File(workspaceDir, name).absolutePath
             val newFile = WorkspaceFile(
                 id = UUID.randomUUID().toString(),
-                workspaceId = sid, // For now, workspaceId == sessionId
+                workspaceId = sid,
                 sessionId = sid,
                 fileName = name,
                 filePath = filePath,
@@ -66,10 +85,34 @@ class WorkspaceViewModel @Inject constructor(
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
                 isDeleted = false,
-                previousContent = null
+                previousContent = null,
+                isFolder = false,
+                parentId = parentId
             )
             workspaceRepository.insertFile(newFile)
             _currentlyOpenFile.value = newFile
+        }
+    }
+
+    fun createFolder(name: String, parentId: String? = null) {
+        val sid = _sessionId.value ?: return
+        viewModelScope.launch {
+            val newFolder = WorkspaceFile(
+                id = UUID.randomUUID().toString(),
+                workspaceId = sid,
+                sessionId = sid,
+                fileName = name,
+                filePath = "", // Folders don't need a direct file path in this simple implementation
+                fileType = "folder",
+                content = "",
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                isDeleted = false,
+                previousContent = null,
+                isFolder = true,
+                parentId = parentId
+            )
+            workspaceRepository.insertFile(newFolder)
         }
     }
 
@@ -107,13 +150,24 @@ class WorkspaceViewModel @Inject constructor(
         }
     }
 
+    private val redoStack = mutableMapOf<String, String>() // fileId -> content
+
     fun undoLastEdit(id: String) {
         viewModelScope.launch {
+            val file = workspaceRepository.getFileById(id) ?: return@launch
+            file.content.let { redoStack[id] = it }
+            
             workspaceRepository.undoLastEdit(id)
             if (_currentlyOpenFile.value?.id == id) {
                 _currentlyOpenFile.value = workspaceRepository.getFileById(id)
             }
         }
+    }
+
+    fun redoLastEdit(id: String) {
+        val redoContent = redoStack[id] ?: return
+        updateFileContent(id, redoContent)
+        redoStack.remove(id)
     }
 
     fun permanentDelete(id: String) {

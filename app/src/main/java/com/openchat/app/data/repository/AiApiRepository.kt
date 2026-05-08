@@ -55,17 +55,28 @@ class AiApiRepository @Inject constructor(
             }
 
             val gson = Gson()
-            val listType = object : TypeToken<List<ContentBlock>>() {}.type
-
             messages.filter { !it.isStreaming }.forEach { msg ->
-                // Basic conversion. In a full implementation we'd check msg.attachments
-                // and construct multimodal content blocks if vision is supported.
-                val contentAny = if (msg.attachments.isNotEmpty() && msg.attachments != "[]") {
-                    // Try to parse attachments
-                    msg.content
+                val base64Images = try {
+                    if (msg.attachments.isNotEmpty() && msg.attachments != "[]") {
+                        gson.fromJson<List<String>>(msg.attachments, object : TypeToken<List<String>>() {}.type)
+                    } else emptyList()
+                } catch (e: Exception) {
+                    emptyList<String>()
+                }
+
+                val contentAny = if (base64Images.isNotEmpty()) {
+                    val contents = mutableListOf<ContentBlock>()
+                    if (msg.content.isNotBlank()) {
+                        contents.add(TextBlock(text = msg.content))
+                    }
+                    base64Images.forEach { base64 ->
+                        contents.add(ImageBlock(image_url = ImageUrl(url = "data:image/jpeg;base64,$base64")))
+                    }
+                    contents
                 } else {
                     msg.content
                 }
+                
                 apiMessages.add(ChatMessage(msg.role, contentAny))
             }
 
@@ -100,6 +111,46 @@ class AiApiRepository @Inject constructor(
             onComplete()
         } catch (e: Exception) {
             onError(e)
+        }
+    }
+
+    suspend fun sendSimpleMessage(
+        provider: ApiProvider,
+        model: AiModel,
+        systemPrompt: String?,
+        userPrompt: String
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val apiKey = providerRepository.getApiKey(provider.id) ?: return@withContext null
+            val apiService = retrofitBuilder.build(provider.baseUrl, apiKey)
+
+            val apiMessages = mutableListOf<ChatMessage>()
+            if (!systemPrompt.isNullOrEmpty()) {
+                apiMessages.add(ChatMessage("system", systemPrompt))
+            }
+            apiMessages.add(ChatMessage("user", userPrompt))
+
+            val request = ChatRequest(
+                model = model.modelId,
+                messages = apiMessages,
+                stream = false,
+                system = systemPrompt
+            )
+
+            val response = apiService.chatCompletions(request)
+            if (response.isSuccessful) {
+                val bodyString = response.body()?.string() ?: return@withContext null
+                val json = JSONObject(bodyString)
+                val choices = json.getJSONArray("choices")
+                if (choices.length() > 0) {
+                    val choice = choices.getJSONObject(0)
+                    val message = choice.getJSONObject("message")
+                    return@withContext message.getString("content")
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
         }
     }
 

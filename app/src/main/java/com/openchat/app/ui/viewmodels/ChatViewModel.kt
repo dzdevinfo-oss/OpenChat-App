@@ -12,8 +12,29 @@ import com.openchat.app.data.repository.ChatRepository
 import com.openchat.app.data.repository.ProviderRepository
 import com.openchat.app.data.repository.SettingsRepository
 import com.openchat.app.data.repository.MemoryRepository
+import com.openchat.app.data.repository.WorkspaceRepository
+import com.openchat.app.util.WorkspaceActionHandler
 import com.openchat.app.voice.VoiceManager
+import com.openchat.app.util.MemoryManager
+import com.openchat.app.util.AgentManager
+import com.openchat.app.util.AgentStatus
+import com.openchat.app.util.ImageProcessor
+import com.openchat.app.util.FileProcessor
+import com.openchat.app.util.MultimodalMessageBuilder
+import com.openchat.app.util.VoiceInputManager
+import com.openchat.app.ui.components.ArtifactPanel
+import com.openchat.app.util.Artifact
+import com.openchat.app.util.ArtifactDetector
+import com.openchat.app.util.TerminalExecutor
+import com.openchat.app.data.model.WorkspaceFile
+import com.openchat.app.data.repository.WorkspaceRepository
+import java.io.File
+import java.util.UUID
+import android.content.Context
+import android.net.Uri
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -27,7 +48,15 @@ class ChatViewModel @Inject constructor(
     private val aiApiRepository: AiApiRepository,
     private val settingsRepository: SettingsRepository,
     private val memoryRepository: MemoryRepository,
-    private val voiceManager: VoiceManager
+    private val workspaceRepository: WorkspaceRepository,
+    private val voiceManager: VoiceManager,
+    private val memoryManager: MemoryManager,
+    private val agentManager: AgentManager,
+    private val voiceInputManager: VoiceInputManager,
+    private val imageProcessor: ImageProcessor,
+    private val fileProcessor: FileProcessor,
+    private val workspaceRepository: WorkspaceRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -63,11 +92,111 @@ class ChatViewModel @Inject constructor(
     val activeProviders: StateFlow<List<ApiProvider>> = providerRepository.getActiveProviders()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val agentStatuses: StateFlow<Map<String, AgentStatus>> = agentManager.agentStatuses
+    
+    private val _currentArtifacts = MutableStateFlow<List<Artifact>>(emptyList())
+    val currentArtifacts = _currentArtifacts.asStateFlow()
+
+    private val _selectedArtifact = MutableStateFlow<Artifact?>(null)
+    val selectedArtifact = _selectedArtifact.asStateFlow()
+
+    private val _isArtifactPanelOpen = MutableStateFlow(false)
+    val isArtifactPanelOpen = _isArtifactPanelOpen.asStateFlow()
+
+    fun showArtifact(artifact: Artifact) {
+        _selectedArtifact.value = artifact
+        _isArtifactPanelOpen.value = true
+    }
+
+    fun closeArtifactPanel() {
+        _isArtifactPanelOpen.value = false
+    }
+
+    fun scanForArtifacts(messageId: String) {
+        val message = _messages.value.find { it.id == messageId } ?: return
+        val artifacts = ArtifactDetector.detectArtifacts(message.content)
+        if (artifacts.isNotEmpty()) {
+            _currentArtifacts.value = artifacts
+            // Auto-open first artifact if it's new
+            _selectedArtifact.value = artifacts.first()
+            _isArtifactPanelOpen.value = true
+        }
+    }
+
+    val isListening: StateFlow<Boolean> = voiceInputManager.isListening
+    val partialTranscription: StateFlow<String> = voiceInputManager.partialText
+
+    private val connectivityManager = context.getSystemService(android.net.ConnectivityManager::class.java)
+    private val _isOnline = MutableStateFlow(true)
+    val isOnline = _isOnline.asStateFlow()
+
+    init {
+        val networkRequest = android.net.NetworkRequest.Builder().build()
+        connectivityManager.registerNetworkCallback(networkRequest, object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) { _isOnline.value = true }
+            override fun onLost(network: android.net.Network) { _isOnline.value = false }
+        })
+    }
+
+    private val terminalExecutor = TerminalExecutor(context)
+    
+    fun saveToWorkspace(language: String, code: String) {
+        val sid = currentSession.value?.id ?: return
+        val ext = when (language.lowercase()) {
+            "python", "py" -> "py"
+            "javascript", "js" -> "js"
+            "html" -> "html"
+            "css" -> "css"
+            "bash", "sh" -> "sh"
+            else -> "txt"
+        }
+        val filename = "snippet_${System.currentTimeMillis()}.$ext"
+        
+        viewModelScope.launch {
+            val workspaceDir = File(context.filesDir, "workspace/$sid")
+            if (!workspaceDir.exists()) workspaceDir.mkdirs()
+            
+            val filePath = File(workspaceDir, filename).absolutePath
+            val newFile = WorkspaceFile(
+                id = UUID.randomUUID().toString(),
+                workspaceId = sid,
+                sessionId = sid,
+                fileName = filename,
+                filePath = filePath,
+                fileType = ext,
+                content = code,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                isDeleted = false,
+                previousContent = null
+            )
+            workspaceRepository.insertFile(newFile)
+            // Show toast or notification? For now we'll assume it works
+        }
+    }
+
+    fun getTerminalExecutor() = terminalExecutor
+
+    fun startVoiceInput(onResult: (String) -> Unit) {
+        voiceInputManager.startListening(onResult)
+    }
+
+    fun stopVoiceInput() {
+        voiceInputManager.stopListening()
+    }
+
+    fun stopSpeaking() {
+        voiceManager.stop()
+    }
+
     init {
         viewModelScope.launch {
-            availableModels.collect { models ->
+            combine(availableModels, settingsRepository.defaultModelId, settingsRepository.defaultProviderId) { models, defModelId, defProvId ->
+                Triple(models, defModelId, defProvId)
+            }.collect { (models, defModelId, defProvId) ->
                 if (_selectedModel.value == null && models.isNotEmpty()) {
-                    _selectedModel.value = models.find { it.modelId == "gemini-2.5-pro-preview-05-06" } ?: models.first()
+                    val fallback = models.find { it.modelId == "gemini-2.5-pro-preview-05-06" } ?: models.first()
+                    _selectedModel.value = models.find { it.id == defModelId } ?: fallback
                     _selectedModel.value?.let { model ->
                         _selectedProvider.value = providerRepository.getProviderById(model.providerId)
                     }
@@ -80,6 +209,10 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             _selectedModel.value = model
             _selectedProvider.value = providerRepository.getProviderById(model.providerId)
+            
+            // Persist as default for future sessions
+            settingsRepository.setDefaultModel(model.id, model.providerId)
+            
             _currentSession.value?.let { session ->
                 chatRepository.updateSession(session.copy(modelId = model.id, providerId = model.providerId))
             }
@@ -134,19 +267,89 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private suspend fun buildSystemPrompt(sessionSystemPrompt: String?): String? {
-        var basePrompt = sessionSystemPrompt ?: settingsRepository.globalSystemPrompt.value
+    private suspend fun buildSystemPrompt(session: Session?): String? {
+        var basePrompt = session?.systemPrompt ?: settingsRepository.globalSystemPrompt.value
         
-        if (settingsRepository.isMemoryEnabled.value) {
-            val memories = memoryRepository.getAllMemories().first()
-            if (memories.isNotEmpty()) {
-                val memoryText = memories.joinToString("\n") { "- \${it.content}" }
-                val memoryContext = "Information you know about the user:\\n\$memoryText"
-                basePrompt = if (basePrompt.isBlank()) memoryContext else "\$basePrompt\\n\\n\$memoryContext"
+        val memoryContext = memoryManager.getMemoryContext()
+        if (memoryContext.isNotEmpty()) {
+            basePrompt = if (basePrompt.isBlank()) memoryContext else "$basePrompt\n\n$memoryContext"
+        }
+
+        session?.let { s ->
+            val handler = WorkspaceActionHandler(workspaceRepository, s.id, context.filesDir)
+            val workspaceContext = handler.getWorkspaceContext()
+            if (workspaceContext.isNotBlank()) {
+                basePrompt = if (basePrompt.isBlank()) workspaceContext else "$basePrompt\n\n$workspaceContext"
             }
         }
         
         return basePrompt.takeIf { it.isNotBlank() }
+    }
+
+    fun clearAllSessions() {
+        viewModelScope.launch {
+            chatRepository.clearAllSessions()
+        }
+    }
+
+    private fun generateSessionTitle(sessionId: String, firstMessage: String) {
+        viewModelScope.launch {
+            try {
+                val currentContextModel = _selectedModel.value ?: return@launch
+                val currentContextProvider = _selectedProvider.value ?: return@launch
+                
+                val titlePrompt = "Give this conversation a 5-word title based on this message: \"$firstMessage\". Just the title, no quotes."
+                var titleAccumulator = ""
+                
+                aiApiRepository.sendStreamingMessage(
+                    provider = currentContextProvider,
+                    model = currentContextModel,
+                    messages = listOf(Message(UUID.randomUUID().toString(), sessionId, "user", titlePrompt, System.currentTimeMillis())),
+                    systemPrompt = "You are a helpful assistant that generates short, concise titles for chat sessions.",
+                    onToken = { token ->
+                        titleAccumulator += token
+                    },
+                    onThinking = {},
+                    onComplete = {
+                        launch {
+                            val finalTitle = titleAccumulator.trim().ifEmpty { 
+                                if (firstMessage.length > 30) firstMessage.take(30) + "..." else firstMessage
+                            }
+                            _currentSession.value?.let { session ->
+                                if (session.id == sessionId) {
+                                    val updatedSession = session.copy(title = finalTitle)
+                                    chatRepository.updateSession(updatedSession)
+                                    _currentSession.value = updatedSession
+                                }
+                            }
+                        }
+                    },
+                    onError = {}
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun handleStreamingComplete(sessionId: String) {
+        viewModelScope.launch {
+            _isStreaming.value = false
+            val finalContent = _currentStreamingContent.value
+            _currentStreamingContent.value = ""
+            _currentStreamingThinking.value = ""
+            
+            // Process workspace actions
+            val handler = WorkspaceActionHandler(workspaceRepository, sessionId, context.filesDir)
+            handler.processContent(finalContent)
+
+            // Extract memories
+            _selectedModel.value?.let { model ->
+                _selectedProvider.value?.let { provider ->
+                    memoryManager.extractMemories(sessionId, _messages.value, provider, model)
+                }
+            }
+        }
     }
 
     fun sendMessage(content: String, attachments: List<Uri>) {
@@ -156,9 +359,10 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             var session = _currentSession.value
-            if (session == null) {
+            val isNewSession = session == null
+            if (isNewSession) {
                 // Determine a quick title
-                val titlePreview = if (content.length > 20) content.take(20) + "..." else content
+                val titlePreview = if (content.length > 30) content.take(30) + "..." else if (content.isEmpty()) "File Attachment" else content
                 session = Session(
                     id = UUID.randomUUID().toString(),
                     title = titlePreview,
@@ -170,25 +374,62 @@ class ChatViewModel @Inject constructor(
                     isPinned = false,
                     workspaceId = null
                 )
-                chatRepository.insertSession(session)
+                chatRepository.insertSession(session!!)
                 _currentSession.value = session
-                observeSessionMessages(session.id)
+                observeSessionMessages(session!!.id)
+            }
+
+            var finalContent = content
+            val base64Images = mutableListOf<String>()
+
+            // Process attachments
+            attachments.forEach { uri ->
+                val mimeType = context.contentResolver.getType(uri) ?: ""
+                if (mimeType.startsWith("image/")) {
+                    imageProcessor.processImage(context, uri)?.let { base64 ->
+                        base64Images.add(base64)
+                    }
+                } else {
+                    fileProcessor.processFile(context, uri)?.let { fileInfo ->
+                        finalContent = "$finalContent\n\n[File: ${fileInfo.name}]\n${fileInfo.content}\n[/File]"
+                    }
+                }
+            }
+
+            // Stringify attachments (Base64 images) for DB
+            val attachmentsJson = if (base64Images.isEmpty()) "[]" else {
+                Gson().toJson(base64Images)
             }
 
             // User Message
             val userMsg = Message(
                 id = UUID.randomUUID().toString(),
-                sessionId = session.id,
+                sessionId = session!!.id,
                 role = "user",
-                content = content,
+                content = finalContent,
                 timestamp = System.currentTimeMillis(),
                 isStreaming = false,
                 tokenCount = null,
-                attachments = "[]", // TODO format attachments based on URIs
+                attachments = attachmentsJson,
                 thinkingContent = null
             )
             chatRepository.insertMessage(userMsg)
-            chatRepository.updateSession(session.copy(updatedAt = System.currentTimeMillis()))
+            chatRepository.updateSession(session!!.copy(updatedAt = System.currentTimeMillis()))
+
+            // Check if user wants to "read" a file
+            var additionalContext = ""
+            if (content.startsWith("read ", ignoreCase = true)) {
+                val fileName = content.substring(5).trim().removePrefix("workspace/")
+                val fileContent = WorkspaceActionHandler(workspaceRepository, session.id, context.filesDir).getFileContent(fileName)
+                if (fileContent != null) {
+                    additionalContext = "\n\n[File: $fileName]\n$fileContent"
+                }
+            }
+
+            if (isNewSession) {
+                // Background update title with AI
+                generateSessionTitle(session!!.id, content)
+            }
 
             // Assistant placeholder message
             val assistantMsgId = UUID.randomUUID().toString()
@@ -212,8 +453,14 @@ class ChatViewModel @Inject constructor(
             // Send to AI API
             streamingJob = viewModelScope.launch {
                 try {
-                    val messagesToSend = chatRepository.getLastNMessages(session.id, 50).sortedBy { it.timestamp }
-                    val finalPrompt = buildSystemPrompt(session.systemPrompt)
+                    val messagesToSend = chatRepository.getLastNMessages(session.id, 50).sortedBy { it.timestamp }.toMutableList()
+                    
+                    if (additionalContext.isNotEmpty() && messagesToSend.isNotEmpty()) {
+                        val last = messagesToSend.last()
+                        messagesToSend[messagesToSend.size - 1] = last.copy(content = last.content + additionalContext)
+                    }
+                    
+                    val finalPrompt = buildSystemPrompt(session)
                     aiApiRepository.sendStreamingMessage(
                         provider = currentContextProvider,
                         model = currentContextModel,
@@ -240,9 +487,16 @@ class ChatViewModel @Inject constructor(
                                         isStreaming = false
                                     )
                                 )
-                                _isStreaming.value = false
-                                _currentStreamingContent.value = ""
-                                _currentStreamingThinking.value = ""
+                                handleStreamingComplete(session.id)
+                                
+                                // Auto-read if preference or context suggests
+                                if (settingsRepository.autoRead.value) {
+                                    voiceManager.speak(
+                                        _currentStreamingContent.value,
+                                        speed = settingsRepository.ttsSpeed.value,
+                                        pitch = settingsRepository.ttsPitch.value
+                                    )
+                                }
                             }
                         },
                         onError = { error ->
@@ -321,7 +575,7 @@ class ChatViewModel @Inject constructor(
             _currentStreamingContent.value = ""
             _currentStreamingThinking.value = ""
             
-            val finalPrompt = buildSystemPrompt(session.systemPrompt)
+            val finalPrompt = buildSystemPrompt(session)
             streamingJob = viewModelScope.launch {
                 val messagesToSend = chatRepository.getLastNMessages(session.id, 50).sortedBy { it.timestamp }
                 aiApiRepository.sendStreamingMessage(
@@ -340,7 +594,7 @@ class ChatViewModel @Inject constructor(
                     onComplete = {
                         launch {
                             chatRepository.updateMessage(initialAssistantMsg.copy(content = _currentStreamingContent.value, thinkingContent = _currentStreamingThinking.value, isStreaming = false))
-                            _isStreaming.value = false
+                            handleStreamingComplete(session.id)
                         }
                     },
                     onError = {
@@ -382,7 +636,7 @@ class ChatViewModel @Inject constructor(
                      _currentStreamingContent.value = ""
                      _currentStreamingThinking.value = ""
                      
-                     val finalPrompt = buildSystemPrompt(session.systemPrompt)
+                     val finalPrompt = buildSystemPrompt(session)
                      streamingJob = viewModelScope.launch {
                          val messagesToSend = chatRepository.getLastNMessages(session.id, 50).sortedBy { it.timestamp }
                          aiApiRepository.sendStreamingMessage(
@@ -401,7 +655,7 @@ class ChatViewModel @Inject constructor(
                              onComplete = {
                                  launch {
                                      chatRepository.updateMessage(initialAssistantMsg.copy(content = _currentStreamingContent.value, thinkingContent = _currentStreamingThinking.value, isStreaming = false))
-                                     _isStreaming.value = false
+                                     handleStreamingComplete(session.id)
                                  }
                              },
                              onError = {
@@ -412,5 +666,15 @@ class ChatViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun launchAgent(sessionId: String, task: String) {
+        val model = _selectedModel.value ?: return
+        val provider = _selectedProvider.value ?: return
+        agentManager.launchAgent(sessionId, task, provider, model)
+    }
+
+    fun stopAgent(sessionId: String) {
+        agentManager.stopAgent(sessionId)
     }
 }

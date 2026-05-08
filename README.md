@@ -10,21 +10,38 @@ OpenChat is a modern, modular, Android application powered by AI. It features mu
 - **Voice Interactions:** built-in Text-To-Speech (TTS) and Speech-To-Text (STT) support.
 - **Modern UI:** Built on Jetpack Compose with Material 3 design and smooth animations.
 
-## Building the App
+## Building and Releasing
 
-This project uses Gradle. To build the application:
+This project uses Gradle.
 
-### Debug Build
-Run the following assembly command to generate a debug APK:
+### Local Development
+To build the application, run:
 ```bash
 ./gradlew assembleDebug
 ```
-The APK will be located at `app/build/outputs/apk/debug/app-debug.apk`.
+The APK will be located at `app/build/outputs/apk/debug/app-debug.apk`. 
 
-### GitHub Actions
-A CI pipeline is included in `.github/workflows/build.yml` which automatically builds the project and uploads the `app-debug.apk` on every push to the `main` or `master` branch.
+Make sure to install JDK 17.
 
-## Setup
+### API Keys
+All API keys are handled in-app via the Settings screen — no secrets are hardcoded in the codebase.
 
-Make sure to install JDK 17 and set it as your default Java environment.
-For local development, simply open the project in Android Studio.
+### GitHub Actions (APK Signing & Release)
+GitHub Actions are configured to automatically build and sign releases.
+
+1. **GitHub Secrets:** Add these secrets to your repository:
+   - `KEYSTORE_BASE64`: Your keystore binary as a base64 string. Generate with: 
+     `keytool -genkey -v -keystore openchat.jks -keyalg RSA -keysize 2048 -validity 10000 -alias openchat`
+     Then encode: `base64 -w 0 openchat.jks`
+   - `KEYSTORE_PASSWORD`: Your keystore password.
+   - `KEY_ALIAS`: openchat
+   - `KEY_PASSWORD`: Your key password.
+
+2. **Trigger a Release:** Push a Git tag starting with `v`:
+   ```bash
+   git tag v1.0.0
+   git push --tags
+   ```
+   The pipeline will build the signed APK and create a GitHub Release automatically.
+
+3. **Installation:** Download the APK from the latest GitHub Release and install on your device (ensure "Install from Unknown Sources" is enabled).

@@ -16,8 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
+import com.openchat.app.util.TerminalExecutor
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.openchat.app.data.model.WorkspaceFile
@@ -25,6 +30,93 @@ import com.openchat.app.ui.theme.Teal500
 import com.openchat.app.ui.viewmodels.WorkspaceViewModel
 import kotlinx.coroutines.launch
 
+@Composable
+fun FileTreeItem(
+    file: WorkspaceFile,
+    allFiles: List<WorkspaceFile>,
+    level: Int,
+    selectedId: String?,
+    onFileClick: (WorkspaceFile) -> Unit,
+    onRename: (WorkspaceFile) -> Unit,
+    onDelete: (WorkspaceFile) -> Unit
+) {
+    var isExpanded by remember { mutableStateOf(true) }
+    val isSelected = selectedId == file.id
+    var expandedMenu by remember { mutableStateOf(false) }
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
+                .clickable {
+                    if (file.isFolder) {
+                        isExpanded = !isExpanded
+                    } else {
+                        onFileClick(file)
+                    }
+                }
+                .padding(start = (16 * level + 12).dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (file.isFolder) {
+                    if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder
+                } else {
+                    Icons.Default.InsertDriveFile
+                },
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = file.fileName,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f),
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+
+            Box {
+                IconButton(onClick = { expandedMenu = true }, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", modifier = Modifier.size(14.dp))
+                }
+                DropdownMenu(expanded = expandedMenu, onDismissRequest = { expandedMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = {
+                            onRename(file)
+                            expandedMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = {
+                            onDelete(file)
+                            expandedMenu = false
+                        }
+                    )
+                }
+            }
+        }
+
+        if (file.isFolder && isExpanded) {
+            val children = allFiles.filter { it.parentId == file.id }
+            children.forEach { child ->
+                FileTreeItem(
+                    file = child,
+                    allFiles = allFiles,
+                    level = level + 1,
+                    selectedId = selectedId,
+                    onFileClick = onFileClick,
+                    onRename = onRename,
+                    onDelete = onDelete
+                )
+            }
+        }
+    }
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkspaceScreen(
@@ -44,6 +136,9 @@ fun WorkspaceScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var fileToRename by remember { mutableStateOf<WorkspaceFile?>(null) }
     var fileNameInput by remember { mutableStateOf("") }
+    var showTerminal by remember { mutableStateOf(false) }
+    var terminalInput by remember { mutableStateOf("") }
+    val terminalHistory by viewModel.terminalHistory.collectAsState()
     
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -61,22 +156,79 @@ fun WorkspaceScreen(
                     }
                 },
                 actions = {
+                    var showMenu by remember { mutableStateOf(false) }
+                    var showTrash by remember { mutableStateOf(false) }
+
                     IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "New File")
+                        Icon(Icons.Default.NoteAdd, contentDescription = "New File")
                     }
                     IconButton(onClick = { importLauncher.launch("*/*") }) {
                         Icon(Icons.Default.UploadFile, contentDescription = "Import file")
                     }
-                    IconButton(onClick = {
-                        val uri = viewModel.exportWorkspaceAsZip()
-                        if (uri != null) {
-                            Toast.makeText(context, "Exported: \$uri", Toast.LENGTH_LONG).show()
-                            // Ideally launch ACTION_VIEW or SEND to share the zip
-                        } else {
-                            Toast.makeText(context, "Export failed or empty", Toast.LENGTH_SHORT).show()
+                    IconButton(onClick = { showTerminal = !showTerminal }) {
+                        Icon(if (showTerminal) Icons.Default.Terminal else Icons.Default.Terminal, contentDescription = "Toggle Terminal", tint = if (showTerminal) Teal500 else MaterialTheme.colorScheme.onSurface)
+                    }
+                    
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More Options")
                         }
-                    }) {
-                        Icon(Icons.Default.Download, contentDescription = "Export to ZIP")
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Export as ZIP") },
+                                onClick = {
+                                    showMenu = false
+                                    val uri = viewModel.exportWorkspaceAsZip()
+                                    if (uri != null) {
+                                        Toast.makeText(context, "Exported: $uri", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Recycle Bin") },
+                                onClick = {
+                                    showMenu = false
+                                    showTrash = true
+                                }
+                            )
+                        }
+                    }
+
+                    if (showTrash) {
+                        AlertDialog(
+                            onDismissRequest = { showTrash = false },
+                            title = { Text("Recycle Bin") },
+                            text = {
+                                if (deletedFiles.isEmpty()) {
+                                    Text("No deleted files.")
+                                } else {
+                                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                                        items(deletedFiles) { file ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(file.fileName, modifier = Modifier.weight(1f))
+                                                Row {
+                                                    IconButton(onClick = { viewModel.recoverFile(file.id) }) {
+                                                        Icon(Icons.Default.Restore, contentDescription = "Restore", tint = Teal500)
+                                                    }
+                                                    IconButton(onClick = { viewModel.permanentDelete(file.id) }) {
+                                                        Icon(Icons.Default.DeleteForever, contentDescription = "Delete Permanent", tint = MaterialTheme.colorScheme.error)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showTrash = false }) {
+                                    Text("Close")
+                                }
+                            }
+                        )
                     }
                 }
             )
@@ -92,66 +244,48 @@ fun WorkspaceScreen(
                 modifier = Modifier
                     .weight(0.35f)
                     .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .background(MaterialTheme.colorScheme.surface)
             ) {
-                Text(
-                    text = "FILES",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
-                )
-
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(currentFiles, key = { it.id }) { file ->
-                        val isSelected = currentlyOpenFile?.id == file.id
-                        var expandedMenu by remember { mutableStateOf(false) }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                .clickable { viewModel.openFile(file) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.InsertDriveFile,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = file.fileName,
-                                fontSize = 14.sp,
-                                modifier = Modifier.weight(1f),
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Box {
-                                IconButton(onClick = { expandedMenu = true }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "More", modifier = Modifier.size(16.dp))
-                                }
-                                DropdownMenu(expanded = expandedMenu, onDismissRequest = { expandedMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text("Rename") },
-                                        onClick = {
-                                            fileToRename = file
-                                            fileNameInput = file.fileName
-                                            expandedMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Delete") },
-                                        onClick = {
-                                            viewModel.deleteFile(file.id)
-                                            expandedMenu = false
-                                        }
-                                    )
-                                }
-                            }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "EXPLORER",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        letterSpacing = 1.sp
+                    )
+                    Row {
+                        IconButton(onClick = { showCreateDialog = true }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.NoteAdd, contentDescription = "New File", modifier = Modifier.size(16.dp))
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = { viewModel.createFolder("New Folder") }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+
+                val rootFiles = currentFiles.filter { it.parentId == null }
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(rootFiles, key = { it.id }) { file ->
+                        FileTreeItem(
+                            file = file,
+                            allFiles = currentFiles,
+                            level = 0,
+                            selectedId = currentlyOpenFile?.id,
+                            onFileClick = { viewModel.openFile(file) },
+                            onRename = { 
+                                fileToRename = it
+                                fileNameInput = it.fileName
+                            },
+                            onDelete = { viewModel.deleteFile(it.id) }
+                        )
                     }
                 }
             }
@@ -159,47 +293,154 @@ fun WorkspaceScreen(
             // Divider
             VerticalDivider(modifier = Modifier.fillMaxHeight(), color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Right Pane: Editor
-            Box(
+            // Right Pane: Editor + Terminal
+            Column(
                 modifier = Modifier
                     .weight(0.65f)
                     .fillMaxHeight()
             ) {
-                if (currentlyOpenFile != null) {
-                    Column(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.weight(if (showTerminal) 0.6f else 1f)) {
+                    if (currentlyOpenFile != null) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = currentlyOpenFile!!.fileName,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    if (currentlyOpenFile!!.previousContent != null) {
+                                        IconButton(onClick = { viewModel.undoLastEdit(currentlyOpenFile!!.id) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Undo, contentDescription = "Undo", modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    IconButton(onClick = { viewModel.redoLastEdit(currentlyOpenFile!!.id) }, modifier = Modifier.size(24.dp)) {
+                                        Icon(Icons.Default.Redo, contentDescription = "Redo", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // "Saved" status / Save button
+                                    TextButton(onClick = { 
+                                        // updateFileContent already does save, but we can add a visual confirmation
+                                        Toast.makeText(context, "Saved ✓", Toast.LENGTH_SHORT).show()
+                                    }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                                        Text("Save", fontSize = 13.sp)
+                                    }
+                                    
+                                    var editorMenu by remember { mutableStateOf(false) }
+                                    Box {
+                                        IconButton(onClick = { editorMenu = true }, modifier = Modifier.size(32.dp)) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                                        }
+                                        DropdownMenu(expanded = editorMenu, onDismissRequest = { editorMenu = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text("Close") },
+                                                onClick = {
+                                                    viewModel.closeFile()
+                                                    editorMenu = false
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Copy Path") },
+                                                onClick = {
+                                                    // TODO Copy to clipboard
+                                                    editorMenu = false
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Delete") },
+                                                onClick = {
+                                                    viewModel.deleteFile(currentlyOpenFile!!.id)
+                                                    editorMenu = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider()
+                            
+                            Box(modifier = Modifier.weight(1f)) {
+                                FileEditorScreen(
+                                    file = currentlyOpenFile!!,
+                                    onContentChanged = { newContent ->
+                                        viewModel.updateFileContent(currentlyOpenFile!!.id, newContent)
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Select a file to view or edit", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                if (showTerminal) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.4f)
+                            .background(Color(0xFF1E1E1E))
+                            .padding(8.dp)
+                    ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surface)
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = currentlyOpenFile!!.fileName,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 14.sp
-                            )
-                            if (currentlyOpenFile!!.previousContent != null) {
-                                TextButton(onClick = { viewModel.undoLastEdit(currentlyOpenFile!!.id) }) {
-                                    Text("Undo Change")
+                            Text("TERMINAL", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Row {
+                                IconButton(onClick = { viewModel.clearTerminal() }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.ClearAll, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                }
+                                IconButton(onClick = { showTerminal = false }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Hide", tint = Color.Gray)
                                 }
                             }
                         }
-                        HorizontalDivider()
                         
-                        Box(modifier = Modifier.weight(1f)) {
-                            FileEditorScreen(
-                                file = currentlyOpenFile!!,
-                                onContentChanged = { newContent ->
-                                    viewModel.updateFileContent(currentlyOpenFile!!.id, newContent)
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                item {
+                                    Text(
+                                        text = terminalHistory,
+                                        color = Color.LightGray,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
                                 }
+                            }
+                        }
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("$ ", color = Teal500, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                            BasicTextField(
+                                value = terminalInput,
+                                onValueChange = { terminalInput = it },
+                                modifier = Modifier.weight(1f).padding(start = 4.dp),
+                                textStyle = LocalTextStyle.current.copy(color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                                cursorBrush = SolidColor(Color.White),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                                keyboardActions = KeyboardActions(onSend = {
+                                    if (terminalInput.isNotBlank()) {
+                                        viewModel.executeCommand(terminalInput)
+                                        terminalInput = ""
+                                    }
+                                })
                             )
                         }
-                    }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Select a file to view or edit", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

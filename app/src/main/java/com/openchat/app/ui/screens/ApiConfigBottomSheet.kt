@@ -68,11 +68,18 @@ fun ApiConfigBottomSheet(
 
                 // Add New Provider Card
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("ADD NEW PROVIDER", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "ADD NEW PROVIDER",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            letterSpacing = 1.sp
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         OutlinedTextField(
@@ -81,9 +88,13 @@ fun ApiConfigBottomSheet(
                             label = { Text("Provider Name (e.g. OpenRouter)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Teal500,
+                                focusedLabelColor = Teal500
+                            )
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         OutlinedTextField(
                             value = urlInput,
@@ -91,9 +102,13 @@ fun ApiConfigBottomSheet(
                             label = { Text("URL (e.g. https://openrouter.ai/api/v1)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Teal500,
+                                focusedLabelColor = Teal500
+                            )
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         OutlinedTextField(
                             value = keyInput,
@@ -106,13 +121,18 @@ fun ApiConfigBottomSheet(
                                 IconButton(onClick = { keyVisible = !keyVisible }) {
                                     Icon(
                                         imageVector = if (keyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = "Toggle key visibility"
+                                        contentDescription = "Toggle key visibility",
+                                        tint = if (keyVisible) Teal500 else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Teal500,
+                                focusedLabelColor = Teal500
+                            )
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
                         
                         Button(
                             onClick = {
@@ -125,19 +145,29 @@ fun ApiConfigBottomSheet(
                                     }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Teal500),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Add Provider", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Add Provider", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
                 // List of Providers
-                Text("ADDED PROVIDERS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+                Text(
+                    "CONFIGURED PROVIDERS",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
                 
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
                     items(providers, key = { it.id }) { provider ->
                         ProviderItemCard(provider = provider, viewModel = viewModel, snackbarHostState = snackbarHostState)
                     }
@@ -160,15 +190,33 @@ fun ProviderItemCard(
     var keyVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    val isGreyedOut = provider.isBuiltInProvider() && provider.encryptedApiKey.isEmpty()
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(
+            containerColor = if (isGreyedOut) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface
+        )
     ) {
         if (isEditing) {
             Column(modifier = Modifier.padding(16.dp)) {
-                OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editUrl, onValueChange = { editUrl = it }, label = { Text("URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    value = editUrl,
+                    onValueChange = { editUrl = it },
+                    label = { Text("URL") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = editKey,
@@ -179,9 +227,10 @@ fun ProviderItemCard(
                     visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = { keyVisible = !keyVisible }) {
-                            Icon(if (keyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
+                            Icon(if (keyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null, tint = Teal500)
                         }
-                    }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -208,10 +257,15 @@ fun ProviderItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(provider.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (provider.encryptedApiKey.isEmpty() && provider.isBuiltInProvider()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                    Text(provider.baseUrl, color = Teal500, fontSize = 12.sp)
+                    Text(
+                        provider.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = if (isGreyedOut) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(provider.baseUrl, color = if (isGreyedOut) Teal500.copy(alpha = 0.5f) else Teal500, fontSize = 12.sp)
                     if (provider.encryptedApiKey.isEmpty()) {
-                        Text("Missing API Key", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        Text("Missing API Key", color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
                 IconButton(onClick = { 
@@ -222,8 +276,10 @@ fun ProviderItemCard(
                 }) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { viewModel.deleteProvider(provider.id) }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                if (!provider.isBuiltInProvider()) {
+                    IconButton(onClick = { viewModel.deleteProvider(provider.id) }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
             // Check credentials button
@@ -234,7 +290,7 @@ fun ProviderItemCard(
                     },
                     modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
                 ) {
-                    Text("Check Credentials", color = Teal500)
+                    Text("Check Credentials", color = Teal500, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

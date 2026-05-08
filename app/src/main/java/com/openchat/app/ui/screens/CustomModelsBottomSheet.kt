@@ -78,11 +78,18 @@ fun CustomModelsBottomSheet(
 
                 // Add Custom Model Card
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("ADD CUSTOM MODEL", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "ADD CUSTOM MODEL",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            letterSpacing = 1.sp
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         OutlinedTextField(
@@ -91,9 +98,10 @@ fun CustomModelsBottomSheet(
                             label = { Text("Model ID (e.g. google/gemini-2.5-flash)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         OutlinedTextField(
                             value = displayNameInput,
@@ -101,9 +109,10 @@ fun CustomModelsBottomSheet(
                             label = { Text("Display Name") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         // Provider Dropdown
                         ExposedDropdownMenuBox(
@@ -118,7 +127,8 @@ fun CustomModelsBottomSheet(
                                 label = { Text("Select Provider API") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerDropdownExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                             )
                             ExposedDropdownMenu(
                                 expanded = providerDropdownExpanded,
@@ -136,7 +146,7 @@ fun CustomModelsBottomSheet(
                             }
                         }
                         
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         // Censor Mode Dropdown
                         ExposedDropdownMenuBox(
@@ -150,7 +160,8 @@ fun CustomModelsBottomSheet(
                                 label = { Text("Assign to Censored Mode") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = censorDropdownExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                             )
                             ExposedDropdownMenu(
                                 expanded = censorDropdownExpanded,
@@ -168,7 +179,7 @@ fun CustomModelsBottomSheet(
                             }
                         }
                         
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
                         
                         Button(
                             onClick = {
@@ -180,23 +191,33 @@ fun CustomModelsBottomSheet(
                                     }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Teal500),
                             shape = RoundedCornerShape(12.dp),
                             enabled = activeProviders.isNotEmpty()
                         ) {
-                            Text("Add Model", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Add Model", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                         if (activeProviders.isEmpty()) {
-                            Text("Please add an API Provider first.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                            Text("Please add an API Provider first.", color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                 }
 
                 // List of Custom Models
-                Text("ADDED CUSTOM MODELS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+                Text(
+                    "ADDED CUSTOM MODELS",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
                 
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
                     items(customModels, key = { it.id }) { model ->
                         CustomModelItemCard(model = model, activeProviders = activeProviders, viewModel = viewModel, snackbarHostState = snackbarHostState)
                     }
@@ -228,13 +249,28 @@ fun CustomModelItemCard(
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp)
     ) {
         if (isEditing) {
             Column(modifier = Modifier.padding(16.dp)) {
-                OutlinedTextField(value = editModelId, onValueChange = { editModelId = it }, label = { Text("Model ID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    value = editModelId,
+                    onValueChange = { editModelId = it },
+                    label = { Text("Model ID") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editDisplayName, onValueChange = { editDisplayName = it }, label = { Text("Display Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    value = editDisplayName,
+                    onValueChange = { editDisplayName = it },
+                    label = { Text("Display Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 ExposedDropdownMenuBox(expanded = providerDropdown, onExpandedChange = { providerDropdown = it }) {
@@ -245,7 +281,8 @@ fun CustomModelItemCard(
                         readOnly = true,
                         label = { Text("Provider API") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerDropdown) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                     )
                     ExposedDropdownMenu(expanded = providerDropdown, onDismissRequest = { providerDropdown = false }) {
                         activeProviders.forEach { provider ->
@@ -265,7 +302,8 @@ fun CustomModelItemCard(
                         readOnly = true,
                         label = { Text("Censored Mode") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = censorDropdown) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Teal500, focusedLabelColor = Teal500)
                     )
                     ExposedDropdownMenu(expanded = censorDropdown, onDismissRequest = { censorDropdown = false }) {
                         censorOptions.forEach { option ->
@@ -276,7 +314,9 @@ fun CustomModelItemCard(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { isEditing = false }) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    TextButton(onClick = { isEditing = false }) { 
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold) 
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
@@ -287,7 +327,9 @@ fun CustomModelItemCard(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Teal500),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("Save") }
+                    ) { 
+                        Text("Save", fontWeight = FontWeight.Bold) 
+                    }
                 }
             }
         } else {
@@ -297,7 +339,8 @@ fun CustomModelItemCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(model.modelId, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
-                    Text(model.displayName, color = Teal500, fontSize = 12.sp)
+                    val providerName = activeProviders.find { it.id == model.providerId }?.name ?: "Unknown Provider"
+                    Text("$providerName • ${model.displayName}", color = Teal500, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
                 IconButton(onClick = { 
                     editModelId = model.modelId

@@ -2,3 +2,11 @@
 -keep @androidx.room.Entity class *
 -keep class * extends retrofit2.Converter$Factory
 -keep class * extends retrofit2.CallAdapter$Factory
+-keep class kotlinx.coroutines.** { *; }
+-keep class com.google.gson.** { *; }
+-keep class retrofit2.** { *; }
+-keep class okhttp3.** { *; }
+-keepnames class com.openchat.app.data.model.** { *; }
+-keep class com.openchat.app.data.model.** { *; }
+-dontwarn retrofit2.**
+-dontwarn okhttp3.**

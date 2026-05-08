@@ -6,6 +6,7 @@ import com.openchat.app.data.db.dao.ApiProviderDao
 import com.openchat.app.data.model.AiModel
 import com.openchat.app.data.model.ApiProvider
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,7 +24,12 @@ class OpenChatApp : Application() {
     @Inject
     lateinit var aiModelDao: AiModelDao
 
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Global coroutine exception handler for top-level app errors
+    private val globalExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        throwable.printStackTrace()
+    }
+
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + globalExceptionHandler)
 
     override fun onCreate() {
         super.onCreate()
@@ -36,7 +42,10 @@ class OpenChatApp : Application() {
             if (existingProviders.isNullOrEmpty()) {
                 val googleId = UUID.randomUUID().toString()
                 val openRouterId = UUID.randomUUID().toString()
+                val openaiId = UUID.randomUUID().toString()
                 val groqId = UUID.randomUUID().toString()
+                val togetherId = UUID.randomUUID().toString()
+                val mistralId = UUID.randomUUID().toString()
 
                 apiProviderDao.insert(
                     ApiProvider(id = googleId, name = "Google AI Studio", baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/", encryptedApiKey = "", isActive = true, createdAt = System.currentTimeMillis())
@@ -45,7 +54,16 @@ class OpenChatApp : Application() {
                     ApiProvider(id = openRouterId, name = "OpenRouter", baseUrl = "https://openrouter.ai/api/v1/", encryptedApiKey = "", isActive = false, createdAt = System.currentTimeMillis())
                 )
                 apiProviderDao.insert(
+                    ApiProvider(id = openaiId, name = "OpenAI", baseUrl = "https://api.openai.com/v1/", encryptedApiKey = "", isActive = false, createdAt = System.currentTimeMillis())
+                )
+                apiProviderDao.insert(
                     ApiProvider(id = groqId, name = "Groq", baseUrl = "https://api.groq.com/openai/v1/", encryptedApiKey = "", isActive = false, createdAt = System.currentTimeMillis())
+                )
+                apiProviderDao.insert(
+                    ApiProvider(id = togetherId, name = "Together AI", baseUrl = "https://api.together.xyz/v1/", encryptedApiKey = "", isActive = false, createdAt = System.currentTimeMillis())
+                )
+                apiProviderDao.insert(
+                    ApiProvider(id = mistralId, name = "Mistral", baseUrl = "https://api.mistral.ai/v1/", encryptedApiKey = "", isActive = false, createdAt = System.currentTimeMillis())
                 )
 
                 val defaultModels = listOf(
@@ -57,13 +75,13 @@ class OpenChatApp : Application() {
                     AiModel(UUID.randomUUID().toString(), "gemini-1.5-flash", "Gemini 1.5 Flash", googleId, true, "default", 1000000, true, true),
                     
                     AiModel(UUID.randomUUID().toString(), "google/gemini-2.5-pro-preview", "Gemini 2.5 Pro (OR)", openRouterId, true, "default", null, true, true),
-                    AiModel(UUID.randomUUID().toString(), "anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet", openRouterId, true, "default", null, true, true),
-                    AiModel(UUID.randomUUID().toString(), "anthropic/claude-3-opus", "Claude 3 Opus", openRouterId, true, "default", null, true, true),
+                    AiModel(UUID.randomUUID().toString(), "anthropic/claude-sonnet-4-5", "Claude 4.5 Sonnet", openRouterId, true, "default", null, true, true),
+                    AiModel(UUID.randomUUID().toString(), "anthropic/claude-opus-4", "Claude 4 Opus", openRouterId, true, "default", null, true, true),
                     AiModel(UUID.randomUUID().toString(), "openai/gpt-4o", "GPT-4o", openRouterId, true, "default", null, true, true),
-                    AiModel(UUID.randomUUID().toString(), "openai/o3-mini", "o3-mini", openRouterId, true, "default", null, false, true),
+                    AiModel(UUID.randomUUID().toString(), "openai/o3", "o3", openRouterId, true, "default", null, false, true),
                     AiModel(UUID.randomUUID().toString(), "meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B", openRouterId, true, "default", null, false, true),
-                    AiModel(UUID.randomUUID().toString(), "qwen/qwen-2.5-32b-instruct", "Qwen 2.5 32B", openRouterId, true, "default", null, false, true),
-                    AiModel(UUID.randomUUID().toString(), "mistralai/mistral-large-2411", "Mistral Large", openRouterId, true, "default", null, false, true)
+                    AiModel(UUID.randomUUID().toString(), "qwen/qwen3-32b", "Qwen 3 32B", openRouterId, true, "default", null, false, true),
+                    AiModel(UUID.randomUUID().toString(), "mistralai/mistral-large", "Mistral Large", openRouterId, true, "default", null, false, true)
                 )
 
                 defaultModels.forEach { aiModelDao.insert(it) }
@@ -71,4 +89,3 @@ class OpenChatApp : Application() {
         }
     }
 }
-

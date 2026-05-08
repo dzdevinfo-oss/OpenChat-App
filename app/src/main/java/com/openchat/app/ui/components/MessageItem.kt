@@ -18,8 +18,12 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.openchat.app.data.model.Message
-import com.openchat.app.ui.theme.Teal500
+import com.openchat.app.util.ArtifactDetector
+import com.openchat.app.util.ArtifactType
+import com.openchat.app.util.CodeExecutionManager
+import com.openchat.app.util.TerminalExecutor
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -35,8 +39,12 @@ fun MessageItem(
     onEdit: (String) -> Unit,
     onRegenerate: () -> Unit,
     onSpeak: (String) -> Unit,
-    onViewArtifact: ((String, String) -> Unit)? = null
+    onViewArtifact: ((String, String) -> Unit)? = null,
+    onSaveToWorkspace: ((String, String) -> Unit)? = null,
+    terminalExecutor: TerminalExecutor? = null
 ) {
+    val context = LocalContext.current
+    val executionManager = remember { terminalExecutor?.let { CodeExecutionManager(context, it) } }
     val isUser = message.role == "user"
     var expandedMenu by remember { mutableStateOf(false) }
     
@@ -121,9 +129,11 @@ fun MessageItem(
                     if (isUser) {
                         Text(text = message.content, color = Color.White, fontSize = 16.sp)
                     } else {
-                        MarkdownText(
-                            markdown = message.content + if (message.isStreaming) " █" else "",
-                            color = MaterialTheme.colorScheme.onSurface
+                        MessageContent(
+                            content = message.content + if (message.isStreaming) " █" else "",
+                            onRunCode = { lang, code -> executionManager?.execute(lang, code) },
+                            onSaveCode = { lang, code -> onSaveToWorkspace?.invoke(lang, code) },
+                            executionManager = executionManager
                         )
                     }
                 }
@@ -175,7 +185,121 @@ fun MessageItem(
 }
 
 @Composable
-fun MarkdownText(markdown: String, color: Color) {
+fun MessageContent(
+    content: String,
+    onRunCode: (String, String) -> Unit,
+    onSaveCode: (String, String) -> Unit,
+    executionManager: CodeExecutionManager?
+) {
+    val segments = remember(content) { splitMessageContent(content) }
+    
+    Column {
+        segments.forEach { segment ->
+            when (segment) {
+                is ContentSegment.Text -> {
+                    MarkdownText(markdown = segment.text, color = MaterialTheme.colorScheme.onSurface)
+                }
+                is ContentSegment.Code -> {
+                    CodeBlock(
+                        language = segment.language,
+                        code = segment.code,
+                        onRun = onRunCode,
+                        onSave = onSaveCode,
+                        executionManager = executionManager
+                    )
+                }
+            }
+        }
+    }
+}
+
+sealed class ContentSegment {
+    data class Text(val text: String) : ContentSegment()
+    data class Code(val language: String, val code: String) : ContentSegment()
+}
+
+fun splitMessageContent(content: String): List<ContentSegment> {
+    val segments = mutableListOf<ContentSegment>()
+    val regex = "```([\\w-]+)?\\n([\\s\\S]*?)```".toRegex()
+    var lastIndex = 0
+    
+    regex.findAll(content).forEach { match ->
+        if (match.range.first > lastIndex) {
+            segments.add(ContentSegment.Text(content.substring(lastIndex, match.range.first)))
+        }
+        val lang = match.groups[1]?.value ?: "text"
+        val code = match.groups[2]?.value ?: ""
+        segments.add(ContentSegment.Code(lang, code))
+        lastIndex = match.range.last + 1
+    }
+    
+    if (lastIndex < content.length) {
+        segments.add(ContentSegment.Text(content.substring(lastIndex)))
+    }
+    
+    return if (segments.isEmpty() && content.isNotEmpty()) listOf(ContentSegment.Text(content)) else segments
+}
+
+@Composable
+fun CodeBlock(
+    language: String,
+    code: String,
+    onRun: (String, String) -> Unit,
+    onSave: (String, String) -> Unit,
+    executionManager: CodeExecutionManager?
+) {
+    val output by (executionManager?.executionOutput?.collectAsState() ?: mutableStateOf(""))
+    val isExecuting by (executionManager?.isExecuting?.collectAsState() ?: mutableStateOf(false))
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF333333))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(language.uppercase(), color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Row {
+                    IconButton(onClick = { onRun(language, code) }, modifier = Modifier.size(24.dp)) {
+                        Icon(if (isExecuting) Icons.Default.Stop else Icons.Default.PlayArrow, contentDescription = "Run", tint = Teal500, modifier = Modifier.size(16.dp))
+                    }
+                    IconButton(onClick = { onSave(language, code) }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Save, contentDescription = "Save", tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+            
+            // Code
+            Text(
+                text = code,
+                color = Color.LightGray,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(12.dp),
+                fontStyle = FontStyle.Normal
+            )
+            
+            // Output
+            if (output.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black)
+                        .padding(8.dp)
+                ) {
+                    Text(text = output, color = Color(0xFF00FF00), fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
     AndroidView(
         factory = { context ->
             TextView(context).apply {
